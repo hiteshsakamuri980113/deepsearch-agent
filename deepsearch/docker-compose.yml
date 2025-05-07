@@ -1,0 +1,28 @@
+services:
+
+  backend:
+    build:
+      context: ./
+      target: backend-dev
+    develop:
+      watch:
+        - path: ./
+          action: sync
+          target: /usr/src/app
+        - path: ./package.json
+          action: rebuild
+    
+  client:
+    build:
+      context: ./
+      target: client-dev
+    develop:
+      watch:
+        - path: ./client/src
+          action: sync
+          target: /usr/src/app
+        - path: ./client/package.json
+          action: rebuild
+  
+volumes:
+  deepsearch_volume:
