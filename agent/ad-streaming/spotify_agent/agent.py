@@ -4,23 +4,40 @@ import urllib.parse
 from google.adk.agents import Agent
 from google.adk.tools import google_search
 import requests
-
-
-
-
+import time
 from dotenv import load_dotenv
 
-load_dotenv()
+# Global variables for token management
+_last_token_reload_time = 0
+_token_reload_interval = 5  # Reload token every 5 seconds
 
-access_token=""
-
-def fetch_access_token(envkey: str):
-    load_dotenv() 
-    access_token=os.getenv(envkey)
+def get_latest_access_token():
+    """
+    Gets the latest access token from the .env file
+    Reloads the .env file each time to ensure latest value is used
+    Implements caching to avoid excessive file I/O
+    """
+    global _last_token_reload_time
+    
+    # Only reload if it's been more than _token_reload_interval seconds since last reload
+    current_time = time.time()
+    if current_time - _last_token_reload_time > _token_reload_interval:
+        load_dotenv(override=True)  # Force reload of .env file
+        _last_token_reload_time = current_time
+        
+    access_token = os.getenv("SPOTIFY_ACCESS_TOKEN")
+    if not access_token:
+        print("WARNING: SPOTIFY_ACCESS_TOKEN not found in environment")
     return access_token
 
-def search_tracks(song_names, user_token) -> dict:
-    headers = {"Authorization": f"Bearer {user_token}"}
+def search_tracks(song_names, user_token=None) -> dict:
+    # Use provided token or get latest
+    token = user_token if user_token else get_latest_access_token()
+    
+    if not token:
+        return {"status": "error", "message": "No valid access token available"}
+        
+    headers = {"Authorization": f"Bearer {token}"}
     track_uris = []
 
     for song_name in song_names:
@@ -38,13 +55,14 @@ def search_tracks(song_names, user_token) -> dict:
 
     return {"status": "success", "track_uris": track_uris}
 
-
-
 def create_spotify_playlist(playlist_name: str, song_names: str) -> dict:
 
-    user_token=os.getenv("SPOTIFY_ACCESS_TOKEN")
+    user_token = get_latest_access_token()
 
-    songList=song_names.split(', ')
+    if not user_token:
+        return {"status": "error", "message": "No valid access token available"}
+
+    songList = song_names.split(', ')
 
     search_result = search_tracks(songList, user_token)
     if search_result["status"] != "success":
@@ -93,7 +111,10 @@ def create_spotify_playlist(playlist_name: str, song_names: str) -> dict:
 
 def fetch_spotify_playlists() -> dict:
 
-    user_token=fetch_access_token("SPOTIFY_ACCESS_TOKEN")
+    user_token = get_latest_access_token()
+
+    if not user_token:
+        return {"status": "error", "message": "No valid access token available"}
 
     print("user_token: ", user_token)
 
@@ -124,9 +145,7 @@ def fetch_spotify_playlists() -> dict:
 root_agent=Agent(
     name="utility_agent",
     model="gemini-2.0-flash-exp",
-    description="An agent to help with user's song requests.",
-    instruction="If the user asks for any song information, fetch it using google_search tool."
-    "If the user asks to fetch their playlists, call the fetch_spotify_playlists tool and return the playlist names."
-    "If the user asks to create a playlist, first let the user know about the songs that are gonna be in the playlist and later ask the name of the playlist and then create the playlist.",
+    description="An agent to help with user's song requests by following the instructions properly.",
+    instruction="If the user asks to fetch their playlists, call the 'fetch_spotify_playlists' tool and return the playlist names. If the user asks about song information, fetch it using 'google_search' tool. If the user asks to create a playlist, first let the user know about the songs that are gonna be in the playlist and later ask the name of the playlist and then create the playlist using the 'create_spotify_playlist' tool.",
     tools=[google_search, fetch_spotify_playlists, create_spotify_playlist]
 )

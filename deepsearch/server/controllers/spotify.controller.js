@@ -35,7 +35,7 @@ const handleSpotifyCallback = async (req, res) => {
     console.log("refresh_token: ", refreshToken);
 
     res.redirect(
-      `http://localhost:5173/new-search?access_token=${accessToken}`
+      `http://localhost:5173/new-search?access_token=${accessToken}&refresh_token=${refreshToken}`
     );
   } catch (err) {
     console.error("Error during Spotify authorization:", err);

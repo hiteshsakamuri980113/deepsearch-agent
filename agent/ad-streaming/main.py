@@ -19,14 +19,28 @@ from google.adk.sessions.in_memory_session_service import InMemorySessionService
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 from spotify_agent.agent import root_agent
+from pydantic import BaseModel
 
 
 load_dotenv()
 
 APP_NAME="custom streaming app"
 session_service = InMemorySessionService()
+
+# Create the FastAPI app
+app = FastAPI()
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # Your React frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 def start_agent_session(session_id: str):
     """Starts an agent session"""
@@ -125,44 +139,6 @@ async def client_to_agent_messaging(websocket, live_request_queue):
         await asyncio.sleep(0)
 
 
-async def get_access_token(refresh_token: str):
-
-    token_url = "https://accounts.spotify.com/api/token"
-
-    # Spotify client credentials from environment variables
-    client_id = os.getenv("SPOTIFY_CLIENT_ID")
-    client_secret = os.getenv("SPOTIFY_CLIENT_SECRET")
-
-    if not client_id or not client_secret:
-        raise ValueError("SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET must be set in the environment.")
-
-    # Prepare the request payload
-    payload = {
-        "grant_type": "refresh_token",
-        "refresh_token": refresh_token,
-    }
-
-    # Prepare the headers with Basic Authentication
-    auth_header = requests.auth.HTTPBasicAuth(client_id, client_secret)
-
-    # Make the POST request to get a new access token
-    response = requests.post(token_url, data=payload, auth=auth_header)
-
-    if response.status_code == 200:
-        # Parse the response JSON
-        token_data = response.json()
-        access_token = token_data.get("access_token")
-        print("Successfully retrieved access token.")
-
-        # Update the access token in the .env file
-        update_env_file("SPOTIFY_ACCESS_TOKEN", access_token)
-
-    else:
-        # Handle errors
-        error_message = response.json().get("error_description", "Failed to retrieve access token.")
-        print(f"Error: {error_message}")
-
-
 def update_env_file(key: str, value: str, env_file_path: str = ".env"):
     env_path = Path(env_file_path)
 
@@ -197,20 +173,35 @@ def update_env_file(key: str, value: str, env_file_path: str = ".env"):
 # FastAPI web app
 #
 
-app = FastAPI()
-
 STATIC_DIR=Path("static")
 
 @app.get("/")
 async def root():
-    refresh_token=os.getenv("REFRESH_TOKEN")
-
-    print("refresh_token: ", refresh_token)
-
-    await get_access_token(refresh_token)
-
     """Serves the index.html"""
     return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+
+class SpotifyData(BaseModel):
+    access_token: str
+    refresh_token: str = None
+    playlist_data: dict = None
+
+@app.post("/api/spotify-data")
+async def receive_spotify_data(data: SpotifyData):
+    """Endpoint to receive Spotify data from React frontend"""
+    print("call received at backend to update access_token")
+    try:
+        # Update environment variables with the new tokens
+        if data.access_token:
+            update_env_file("SPOTIFY_ACCESS_TOKEN", data.access_token)
+        
+        if data.refresh_token:
+            update_env_file("REFRESH_TOKEN", data.refresh_token)
+            
+        # You can process playlist_data here if needed
+        
+        return {"status": "success", "message": "Data received successfully"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: int):

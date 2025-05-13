@@ -60,3 +60,26 @@ export const fetchUser = async (accessToken) => {
     return error.msg;
   }
 };
+
+export const sendDataToPythonBackend = async (data) => {
+  try {
+    // Replace this URL with your Python backend URL
+    const pythonBackendUrl = "http://localhost:8000/api/spotify-data";
+
+    const response = await fetch(pythonBackendUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+
+    const responseData = await response.json();
+    console.log("Data sent to Python backend:", responseData);
+    return responseData;
+  } catch (error) {
+    console.error("Error sending data to Python backend:", error);
+    throw error;
+  }
+};
